@@ -1,0 +1,30 @@
+[
+  {
+    "arguments": [
+      "/nix/store/i6zjqpawh725z1lyg3alglzlabnzbjx7-gcc-wrapper-12.3.0/bin/c++",
+      "-c",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-std=c++20",
+      "-Wconversion",
+      "-pedantic",
+      "-frandom-seed=5db92jwpcm",
+      "-isystem",
+      "/nix/store/q84472wcvladjsx15a9d847lhlyiklys-nodejs-18.18.2/include",
+      "-isystem",
+      "/nix/store/6myk8cvfd7agnjai8mjx6znqlx4yz7v6-gnumake-4.4.1/include",
+      "-isystem",
+      "/nix/store/q84472wcvladjsx15a9d847lhlyiklys-nodejs-18.18.2/include",
+      "-isystem",
+      "/nix/store/6myk8cvfd7agnjai8mjx6znqlx4yz7v6-gnumake-4.4.1/include",
+      "-pthread",
+      "-o",
+      "bin/test_sync_queue",
+      "test/sync_queue.cpp"
+    ],
+    "directory": "/home/longlodw/Documents/cpp_workspace/Ring",
+    "file": "/home/longlodw/Documents/cpp_workspace/Ring/test/sync_queue.cpp",
+    "output": "/home/longlodw/Documents/cpp_workspace/Ring/bin/test_sync_queue"
+  }
+]
