@@ -67,15 +67,18 @@ namespace ring {
        * @return The item at the back of the queue
        */
       constexpr T& front() const;
-    private:
-      template <bool Out, bool Soft>
-      friend class move;
-      static constexpr std::size_t buffer_size = N + 1;
-      T items[buffer_size];
       std::atomic<std::size_t> head = 0;
       std::atomic<std::size_t> tail = 0;
       std::atomic<std::size_t> base_head = 0;
       std::atomic<std::size_t> base_tail = 0;
+    private:
+      static constexpr std::size_t increment(const std::size_t idx) {
+        return (idx + 1) % buffer_size;
+      }
+      template <bool Out, bool Soft>
+      friend class transaction;
+      static constexpr std::size_t buffer_size = N + 1;
+      T items[buffer_size];
   };
 
   template<typename T, std::size_t N>
@@ -127,18 +130,20 @@ namespace ring {
   constexpr auto sync_queue<T, N>::enqueue(U&& item) -> std::enable_if_t<std::is_convertible_v<U, T>, bool> {
     std::size_t current_tail;
     std::size_t current_head_base;
+    std::size_t next_tail;
     do {
       current_tail = tail.load();
+      next_tail = increment(current_tail);
       current_head_base = base_head.load();
-      if (current_tail == current_head_base) {
+      if (next_tail == current_head_base) {
         return false;
       }
-    } while (!tail.compare_exchange_strong(current_tail, (current_tail + 1) % buffer_size));
+    } while (!tail.compare_exchange_strong(current_tail, next_tail));
     items[current_tail] = std::forward<U>(item);
     std::size_t current_tail_base;
     do {
       current_tail_base = base_tail.load();
-    } while (!(current_tail_base == current_tail || base_tail.compare_exchange_strong(current_tail_base, (current_tail_base + 1) % buffer_size)));
+    } while (!(current_tail_base == current_tail && base_tail.compare_exchange_strong(current_tail_base, increment(current_tail_base))));
     return true;
   }
 
@@ -152,13 +157,13 @@ namespace ring {
       if (current_head == current_tail_base) {
         return false;
       }
-    } while (!head.compare_exchange_strong(current_head, (current_head + 1) % buffer_size));
+    } while (!head.compare_exchange_strong(current_head, increment(current_head)));
     
     item = std::move(items[current_head]);
     std::size_t current_head_base;
     do {
       current_head_base = base_head.load();
-    } while (!(current_head_base == current_head || base_head.compare_exchange_strong(current_head_base, (current_head_base + 1) % buffer_size)));
+    } while (!(current_head_base == current_head && base_head.compare_exchange_strong(current_head_base, increment(current_head_base))));
     return true;
   }
 
@@ -192,28 +197,35 @@ namespace ring {
       end_base = queue->base_head.load();
     }
     end = start + count;
-    std::size_t end_base_comp = end_base > start ? end_base : (end_base + buffer_size);
+    std::size_t end_base_comp = (((end_base + Out) % buffer_size > start) ? end_base : (end_base + buffer_size)) - !Out;
     if (Soft) {
       end = std::min(end, end_base_comp);
-    } else {
-      if (end > end_base_comp) {
-        return 0;
-      }
-      end = end % buffer_size;
+    } else if (end > end_base_comp) {
+      return 0;
     }
     
-    if (queue->head.compare_exchange_strong(start, end)) {
+    end = end % buffer_size;
+    if (Out) {
+      if (queue->head.compare_exchange_strong(start, end)) {
+        current_start = start;
+        return end >= start ? end - start : (buffer_size - start + end);
+      }
+      return 0;
+    }
+    if (queue->tail.compare_exchange_strong(start, end)) {
       current_start = start;
       return end >= start ? end - start : (buffer_size - start + end);
     }
-    
     return 0;
   }
 
   template <typename T, std::size_t N>
   template <bool Out, bool Soft>
   constexpr bool sync_queue<T, N>::transaction<Out, Soft>::commit() {
-    return current_start == end && queue->base_head.compare_exchange_strong(start, current_start);
+    if (Out) {
+      return current_start == end && queue->base_head.compare_exchange_strong(start, current_start);
+    }
+    return current_start == end && queue->base_tail.compare_exchange_strong(start, current_start);
   }
 
   template <typename T, std::size_t N>
@@ -233,7 +245,7 @@ namespace ring {
     }
     else {
       for (std::size_t i = 0; current_start != end && i != count; ++i) {
-        queue->items[i] = std::move(*current);
+        queue->items[current_start] = std::move(*current);
         ++current;
         current_start = (current_start + 1) % buffer_size;
       }
