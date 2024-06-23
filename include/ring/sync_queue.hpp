@@ -189,7 +189,7 @@ namespace ring {
   constexpr std::size_t sync_queue<T, N>::transaction<Out, Soft>::prepare(sync_queue &qu, const std::size_t count) {
     queue = &qu;
     std::size_t end_base;
-    if (Out) {
+    if constexpr (Out) {
       start = queue->head.load();
       end_base = queue->base_tail.load();
     } else {
@@ -198,14 +198,14 @@ namespace ring {
     }
     end = start + count;
     std::size_t end_base_comp = (((end_base + Out) % buffer_size > start) ? end_base : (end_base + buffer_size)) - !Out;
-    if (Soft) {
-      end = std::min(end, end_base_comp);
+    if constexpr (Soft) {
+      end = end < end_base_comp ? end : end_base_comp;
     } else if (end > end_base_comp) {
       return 0;
     }
     
     end = end % buffer_size;
-    if (Out) {
+    if constexpr (Out) {
       if (queue->head.compare_exchange_strong(start, end)) {
         current_start = start;
         return end >= start ? end - start : (buffer_size - start + end);
@@ -222,7 +222,7 @@ namespace ring {
   template <typename T, std::size_t N>
   template <bool Out, bool Soft>
   constexpr bool sync_queue<T, N>::transaction<Out, Soft>::commit() {
-    if (Out) {
+    if constexpr (Out) {
       return current_start == end && queue->base_head.compare_exchange_strong(start, current_start);
     }
     return current_start == end && queue->base_tail.compare_exchange_strong(start, current_start);
@@ -236,7 +236,7 @@ namespace ring {
     if (current_start < end ? (count > end - current_start) : (count > buffer_size - current_start + end)) {
       return current;
     }
-    if (Out) {
+    if constexpr (Out) {
       for (std::size_t i = 0; current_start != end && i != count; ++i) {
         *current = std::move(queue->items[current_start]);
         ++current;
